@@ -8,8 +8,9 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe'; // Import Stripe type for Event object
-import { StripeServicePort, CheckoutSessionRequest, PaymentSession } from '../../domain';
 import { randomUUID } from 'crypto';
+import { CheckoutSessionRequest, StripeServicePort } from 'src/payments/domain/ports/stripe.service.port';
+import { PaymentSession } from 'src/payments/domain/model/payment-session.entity';
 
 /**
  * @class MockStripeAdapter

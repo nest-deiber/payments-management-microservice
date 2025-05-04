@@ -8,9 +8,10 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { Inject, Logger, HttpStatus } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
-import { StripeServicePort, STRIPE_SERVICE_PORT, CheckoutSessionRequest, PaymentSession } from '../../../domain';
 import { CreatePaymentSessionCommand } from '../impl/create-payment-session.command';
 import { CreatePaymentSessionResponseDto } from '../../dto';
+import { CheckoutSessionRequest, STRIPE_SERVICE_PORT, StripeServicePort } from 'src/payments/domain/ports/stripe.service.port';
+import { PaymentSession } from 'src/payments/domain/model/payment-session.entity';
 
 /**
  * @class CreatePaymentSessionHandler
@@ -58,7 +59,7 @@ export class CreatePaymentSessionHandler implements ICommandHandler<CreatePaymen
       // Wrap other errors from the port
       throw new RpcException({
           status: HttpStatus.INTERNAL_SERVER_ERROR,
-          message: error.message || 'Failed to create payment session.',
+          message: error.message ?? 'Failed to create payment session.',
       });
     }
   }

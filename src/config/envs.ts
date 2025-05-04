@@ -38,9 +38,9 @@ const envVars: EnvVars = value;
 
 export const envs = {
   port: envVars.PORT,
-  stripeSecret: envVars.STRIPE_SECRET, // Still needed by mock for structure potentially
+  stripeSecret: envVars.STRIPE_SECRET,
   stripeSuccessUrl: envVars.STRIPE_SUCCESS_URL,
   stripeCancelUrl: envVars.STRIPE_CANCEL_URL,
-  stripeEndpointSecret: envVars.STRIPE_ENDPOINT_SECRET, // Still needed by mock webhook handler
+  stripeEndpointSecret: envVars.STRIPE_ENDPOINT_SECRET,
   natsServers: envVars.NATS_SERVERS,
 };

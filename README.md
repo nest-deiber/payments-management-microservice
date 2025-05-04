@@ -27,26 +27,26 @@ The service combines **Clean Architecture (Hexagonal)** with **CQRS**, tailored 
 ### 2.1. Clean Architecture / Hexagonal Architecture
 
 * **Domain Layer (`src/payments/domain`):** Contains core concepts like `PaymentSession`, event payloads (`PaymentSucceededEventPayload`), and Port interfaces defining contracts (`StripeServicePort`, `EventPublisherPort`). It is independent of external frameworks and tools.
-* **Application Layer (`src/payments/application`):** Orchestrates use cases using CQRS Commands (`CreatePaymentSessionCommand`, `ProcessStripeEventCommand`) and their Handlers. Includes DTOs for data transfer and validation. Depends only on the Domain layer.
+* **Application Layer (`src/payments/application`):** Orchestrates use cases using CQRS Commands (`CreatePaymentSessionCommand`, `ProcessStripeEventCommand`, `CompletePaymentCommand`) and their Handlers. Includes DTOs for data transfer and validation. Depends only on the Domain layer.
 * **Infrastructure Layer (`src/payments/infrastructure`, `src/health-check`, `src/config`, `src/transports`, `src/shared/infrastructure`):** Contains implementation details:
     * **Adapters (`src/payments/infrastructure/adapters`):** Concrete implementations of Ports (`MockStripeAdapter`, `NatsEventPublisher`).
-    * **Controllers (`src/payments/infrastructure/controllers`, `src/health-check`):** Entry points - `PaymentsV1Controller` handles NATS messages and HTTP requests; `HealthCheckController` handles basic HTTP health checks.
+    * **Controllers (`src/payments/infrastructure/controllers`, `src/health-check`):** Entry points for various payment operations - `WebhookController`, `PaymentCompletionController`, `PaymentCancellationController`, etc.
     * **Framework Setup:** NestJS modules, configuration loading, NATS client setup, shared filters/interceptors.
 
 ### 2.2. CQRS (Command Query Responsibility Segregation)
 
 Utilized via `@nestjs/cqrs`, focusing on commands and events:
 
-* **Commands:** `CreatePaymentSessionCommand`, `ProcessStripeEventCommand`. Represent actions to be performed.
+* **Commands:** `CreatePaymentSessionCommand`, `ProcessStripeEventCommand`, `CompletePaymentCommand`, etc. Represent actions to be performed.
 * **Handlers:** Contain the logic to execute commands, interacting with domain ports.
-* **Events:** Domain events (`payment.succeeded`) are published via `EventPublisherPort` after successful webhook processing, allowing other services (like Orders MS) to react.
+* **Events:** Domain events (`payment.succeeded`, `payment.cancelled`, `payment.refunded`) are published via `EventPublisherPort` after successful operations, allowing other services (like Orders MS) to react.
 
 ### 2.3. Hybrid Application (HTTP + NATS)
 
 The service is bootstrapped as a hybrid NestJS application:
 
-* **HTTP Listener:** Handles incoming requests for webhooks (`/v1/payments/webhook`), health checks (`/`), payment redirects (`/v1/payments/success`, `/v1/payments/cancel`), and Swagger documentation (`/api`).
-* **NATS Listener:** Connects to the NATS broker to receive messages (`create.payment.session`) and potentially other commands/queries.
+* **HTTP Listener:** Handles incoming requests for webhooks, payment operations, redirects, health checks, and Swagger documentation.
+* **NATS Listener:** Connects to the NATS broker to receive messages and commands.
 
 ---
 
@@ -56,14 +56,14 @@ The service is bootstrapped as a hybrid NestJS application:
 src/
 ├── payments/                 # Main Feature Module: Payments
 │   ├── application/          # Use Cases, CQRS, DTOs
-│   │   ├── commands/         # Write Operations (CreateSession, ProcessEvent)
+│   │   ├── commands/         # Write Operations (CreateSession, CompletePayment, etc.)
 │   │   └── dto/              # Data Transfer Objects
 │   ├── domain/                 # Core Business Logic & Abstractions
-│   │   ├── model/            # --> PaymentSession, PaymentSucceededEventPayload
+│   │   ├── model/            # --> PaymentSession, etc.
 │   │   └── ports/            # --> StripeServicePort, EventPublisherPort
 │   └── infrastructure/         # Implementation Details
 │       ├── adapters/         # --> MockStripeAdapter, NatsEventPublisher
-│       └── controllers/      # --> PaymentsV1Controller (HTTP + NATS)
+│       └── controllers/      # --> Controllers for various payment operations
 ├── health-check/             # HTTP Health Check Module & Controller
 ├── config/                   # Configuration (envs.ts, services.ts)
 ├── shared/                   # Shared Infrastructure (Filters, Interceptors)
@@ -72,8 +72,6 @@ src/
 ├── app.module.ts             # Root Application Module
 └── main.ts                   # Application Bootstrap (Hybrid)
 ```
-
-*(Note: `@author` and `@date` tags pointing to "Roberto Morales" and "2025-05-01" exist in the code and should ideally be updated/removed).*
 
 ---
 
@@ -146,24 +144,26 @@ The service starts both the HTTP server on `PORT` and the NATS listener.
 
 ### 6.1. NATS API
 
-Handled by `PaymentsV1Controller`:
+The service handles several NATS message patterns including:
 
-* **`create.payment.session` (Message Pattern):** Initiates payment session creation.
-    * Payload: `PaymentSessionDto`
-    * Response: `CreatePaymentSessionResponseDto`
-* **`get.payment.status`, `cancel.payment`, `list.user.payments`, `process.refund` (Message Patterns):** Placeholder handlers exist, returning mock data.
-* **`payment.succeeded` (Event Published):** Emitted by `NatsEventPublisher` after processing a successful webhook event.
-    * Payload: `PaymentSucceededEventPayload`
+* **`create.payment.session`:** Initiates payment session creation.
+* **`complete.payment`:** Completes a payment for a specific order.
+* **Published Events:** `payment.succeeded`, `payment.cancelled`, `payment.failed`, `payment.refunded`.
 
 ### 6.2. HTTP API
 
-Handled by `PaymentsV1Controller` and `HealthCheckController`:
+The service exposes several versioned HTTP endpoints (/v1/payments/*):
 
 * **`GET /`:** Health check endpoint.
-* **`POST /v1/payments/webhook`:** Receives webhook events from payment providers (e.g., Stripe). Requires raw body and `stripe-signature` header (signature verification is mocked).
-* **`GET /v1/payments/success`:** Redirect URL for successful payments.
-* **`GET /v1/payments/cancel`:** Redirect URL for cancelled payments.
+* **`POST /v1/payments/webhook`:** Webhook endpoint for payment providers.
+* **`POST /v1/payments/complete/order/:orderId`:** Completes payment for an order.
+* **`POST /v1/payments/cancel/order/:orderId`:** Cancels payment for an order.
+* **`POST /v1/payments/refund/order`:** Processes a refund.
+* **`GET /v1/payments/success`:** Success redirect endpoint.
+* **`GET /v1/payments/cancel`:** Cancellation redirect endpoint.
 * **`GET /api`:** Swagger UI for API documentation.
+
+For detailed API documentation, see the API-DOCS.md file.
 
 ---
 
@@ -178,15 +178,15 @@ Handled by `PaymentsV1Controller` and `HealthCheckController`:
 
 ## 8. Best Practices Employed
 
-* **Dependency Injection.**
-* **Separation of Concerns (Clean Architecture, CQRS).**
+* **Dependency Injection:** Core to NestJS and used throughout.
+* **Separation of Concerns:** Clean Architecture layers & CQRS.
 * **Ports & Adapters:** Abstraction for external dependencies (Payment Provider, Event Bus), enabling the mock strategy.
-* **Configuration Management.**
-* **Type Safety.**
-* **DTOs & Validation.**
-* **Hybrid Application Setup.**
-* **API Documentation (Swagger).**
-* **Health Check Endpoint.**
+* **Configuration Management:** Centralized and validated environment variables.
+* **Type Safety:** Via TypeScript and interfaces.
+* **DTOs & Validation:** Clear data contracts and boundary validation.
+* **Event-Driven Architecture:** Publishing events for other services to react to.
+* **Controller Refactoring:** Separated controllers by functionality (webhook, completion, cancellation, etc.).
+* **Command Delegation:** Moved business logic from controllers to command handlers.
 
 ---
 
@@ -197,3 +197,5 @@ Handled by `PaymentsV1Controller` and `HealthCheckController`:
 * **Webhook Idempotency & Reliability:** Implement mechanisms to handle duplicate webhook events and ensure critical events (like payment success) are processed reliably (e.g., retries, dead-letter queues for event publishing).
 * **Multi-Provider Support:** Abstract `StripeServicePort` further if support for other providers (PayPal, etc.) is required.
 * **Observability:** Add distributed tracing, metrics, and enhanced logging.
+
+For detailed API documentation and examples, please refer to the [API Documentation](./API-DOCS.md).

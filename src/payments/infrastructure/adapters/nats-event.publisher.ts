@@ -6,8 +6,8 @@
  */
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { EventPublisherPort, PaymentSucceededEventPayload } from '../../domain';
-import { NATS_SERVICE } from '../../../config';
+import { EventPublisherPort } from 'src/payments/domain';
+import { NATS_SERVICE } from 'src/config';
 
 /**
  * @class NatsEventPublisher
@@ -22,7 +22,10 @@ export class NatsEventPublisher implements EventPublisherPort {
    * @constructor
    * @param {ClientProxy} client - Injected NATS client proxy.
    */
-  constructor(@Inject(NATS_SERVICE) private readonly client: ClientProxy) {}
+  constructor(
+    @Inject(NATS_SERVICE)
+    private readonly natsClient: ClientProxy
+  ) {}
 
   /**
    * Publishes the 'payment.succeeded' event to NATS using emit (fire-and-forget).
@@ -30,14 +33,54 @@ export class NatsEventPublisher implements EventPublisherPort {
    * @param {PaymentSucceededEventPayload} payload - The event data.
    * @returns {Promise<void>} Resolves immediately after emitting.
    */
-  async publishPaymentSucceeded(payload: PaymentSucceededEventPayload): Promise<void> {
-    this.logger.log(`Publishing NATS event 'payment.succeeded' for Order ID: ${payload.orderId}`);
-    try {
-      this.client.emit('payment.succeeded', payload);
-    } catch (error: any) {
-      this.logger.error(`Error publishing NATS event 'payment.succeeded': ${error.message}`, error.stack);
-      throw new Error(`Failed to publish event: ${error.message}`);
-    }
-    return Promise.resolve();
+  async publishPaymentSucceeded(data: {
+    orderId: string;
+    paymentId: string;
+    amount: number;
+    paidAt: string;
+    stripeChargeId?: string;
+  }): Promise<void> {
+    this.logger.log(`Emitting payment.succeeded event for Order ID: ${data.orderId}`);
+    this.natsClient.emit('payment.succeeded', data);
+  }
+
+  /**
+   * Publishes a failed payment event
+   */
+  async publishPaymentFailed(data: {
+    orderId: string;
+    paymentId: string;
+    failureReason: string;
+  }): Promise<void> {
+    this.logger.log(`Emitting payment.failed event for Order ID: ${data.orderId}`);
+    this.natsClient.emit('payment.failed', data);
+  }
+
+  /**
+   * Publishes a cancelled payment event
+   */
+  async publishPaymentCancelled(data: {
+    orderId: string;
+    paymentId: string;
+    cancelledAt: string;
+    reason: string;
+  }): Promise<void> {
+    this.logger.log(`Emitting payment.cancelled event for Order ID: ${data.orderId}`);
+    this.natsClient.emit('payment.cancelled', data);
+  }
+
+  /**
+   * Publishes a refunded payment event
+   */
+  async publishPaymentRefunded(data: {
+    orderId: string;
+    paymentId: string;
+    refundId: string;
+    amount: number;
+    refundedAt: string;
+    reason?: string;
+  }): Promise<void> {
+    this.logger.log(`Emitting payment.refunded event for Order ID: ${data.orderId}`);
+    this.natsClient.emit('payment.refunded', data);
   }
 }
