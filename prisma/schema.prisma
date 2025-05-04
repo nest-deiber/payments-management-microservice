@@ -1,0 +1,13 @@
+// prisma/schema.prisma
+// Minimal schema for consistency. Payments MS does not use the DB in core logic.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL") // "file:./prisma/payments.db"
+}
+
+// No models defined as they are not used by the current service logic.
+// Add models here if database persistence is needed for payments later.
